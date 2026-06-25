@@ -39,6 +39,11 @@ context.DEADLINE_EXCEEDED = errors.new("context deadline exceeded", {
   kind = "context_deadline_exceeded",
 })
 
+---@return lugo.Done
+function context.new_done()
+  return new_done()
+end
+
 ---@param ctx lugo.Context
 ---@param err lugo.Error
 local function cancel_context(ctx, err)
