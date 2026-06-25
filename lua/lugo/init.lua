@@ -1,5 +1,6 @@
 ---@class lugo
 ---@field errors lugo.errors
+---@field context lugo.context
 ---@field new_error fun(message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field wrap_error fun(err: lugo.Error|string, message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field check fun(value: any, err?: lugo.Error|string): any
@@ -8,6 +9,7 @@
 local lugo = {}
 
 lugo.errors = require("lugo.errors")
+lugo.context = require("lugo.context")
 
 lugo.new_error = lugo.errors.new
 lugo.wrap_error = lugo.errors.wrap

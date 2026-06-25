@@ -1,5 +1,6 @@
 LUA ?= lua
 LUA_LANGUAGE_SERVER ?= lua-language-server
+TESTS := $(wildcard test/*_test.lua)
 
 .PHONY: check typecheck test
 
@@ -15,4 +16,6 @@ typecheck:
 		--metapath=.lua-ls/meta
 
 test:
-	$(LUA) test/errors_test.lua
+	@for test in $(TESTS); do \
+		$(LUA) $$test || exit 1; \
+	done
