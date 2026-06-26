@@ -20,10 +20,10 @@ dependencies = {
 build = {
   type = "builtin",
   modules = {
-    ["lugo"] = "lua/lugo/init.lua",
-    ["lugo.context"] = "lua/lugo/context.lua",
-    ["lugo.errors"] = "lua/lugo/errors.lua",
-    ["lugo.scheduler"] = "lua/lugo/scheduler.lua",
-    ["lugo_uv"] = "lua/lugo_uv/init.lua",
+    ["lugo"] = "src/lugo/init.lua",
+    ["lugo.context"] = "src/lugo/context.lua",
+    ["lugo.errors"] = "src/lugo/errors.lua",
+    ["lugo.scheduler"] = "src/lugo/scheduler.lua",
+    ["lugo_uv"] = "src/lugo_uv/init.lua",
   },
 }

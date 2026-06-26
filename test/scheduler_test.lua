@@ -1,4 +1,4 @@
-package.path = "lua/?.lua;lua/?/init.lua;test/?.lua;test/?/init.lua;" .. package.path
+package.path = "src/?.lua;src/?/init.lua;test/?.lua;test/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
 local test_driver = require("support.test_driver")
