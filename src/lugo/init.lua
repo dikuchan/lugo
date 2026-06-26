@@ -2,7 +2,7 @@
 ---@field errors lugo.errors
 ---@field context lugo.context
 ---@field scheduler lugo.scheduler
----@field testing fun(fn: fun(test: fun(name: string, fn: fun(t: lugo.testing.T)))): boolean
+---@field testing lugo.testing
 ---@field new_error fun(message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field wrap_error fun(err: lugo.Error|string, message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field check fun(value: any, err?: lugo.Error|string): any

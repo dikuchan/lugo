@@ -1,9 +1,8 @@
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
-local testing = require("lugo.testing")
 
-local ok = testing(function(test)
+return function(test)
   test("errors: create and wrap structured errors", function(t)
     local not_found = lugo.new_error("not found", { kind = "not_found" })
     local wrapped = lugo.wrap_error(not_found, "load user failed")
@@ -71,8 +70,4 @@ local ok = testing(function(test)
     t:equal(joined.kind, "multiple")
     t:equal(#joined.fields.errors, 2)
   end)
-end)
-
-if not ok then
-  error("errors_test.lua failed")
 end

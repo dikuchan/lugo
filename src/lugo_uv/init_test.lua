@@ -2,16 +2,18 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
 local lugo_uv = require("lugo_uv")
-local testing = require("lugo.testing")
 
 local probe_driver, probe_err = lugo_uv.driver()
 if probe_driver == nil then
-  print("uv_driver_test.lua: skipped (" .. tostring(probe_err) .. ")")
-  return
+  return function(test)
+    test("lugo_uv: skipped", function(t)
+      t:log("skipped: " .. tostring(probe_err))
+    end)
+  end
 end
 probe_driver:close()
 
-local ok = testing(function(test)
+return function(test)
   test("lugo_uv: now is monotonic", function(t)
     local driver = lugo.check(lugo_uv.driver())
     t:cleanup(function()
@@ -109,8 +111,4 @@ local ok = testing(function(test)
     t:is_false(driver:has_pending())
     t:is_false(fired)
   end)
-end)
-
-if not ok then
-  error("uv_driver_test.lua failed")
 end

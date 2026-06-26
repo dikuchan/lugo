@@ -4,10 +4,9 @@ LUAROCKS ?= luarocks
 LUA_LANGUAGE_SERVER ?= lua-language-server
 ROCKSPEC ?= lugo-scm-1.rockspec
 ROCKS_TREE ?= $(CURDIR)/.rocks
-TESTS := $(wildcard test/*_test.lua)
 LUAROCKS_ENV = eval "$$($(LUAROCKS) --lua-version=$(LUA_VERSION) --tree=$(ROCKS_TREE) path)"
 
-.PHONY: check typecheck deps test test-uv
+.PHONY: check typecheck deps test
 
 check: typecheck test
 
@@ -24,9 +23,4 @@ typecheck:
 		--metapath=.lua-ls/meta
 
 test:
-	@for test in $(TESTS); do \
-		$(LUAROCKS_ENV) && $(LUA) $$test || exit 1; \
-	done
-
-test-uv:
-	$(LUAROCKS_ENV) && $(LUA) test/uv_driver_test.lua
+	$(LUAROCKS_ENV) && $(LUA) test.lua

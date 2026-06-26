@@ -1,11 +1,10 @@
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
-local testing = require("lugo.testing")
 
 local context = lugo.context
 
-local ok = testing(function(test)
+return function(test)
   test("context: background is active", function(t)
     local root = context.background()
 
@@ -50,8 +49,4 @@ local ok = testing(function(test)
     cancel()
     t:is_true(context.is_canceled(timed:err()))
   end)
-end)
-
-if not ok then
-  error("context_test.lua failed")
 end

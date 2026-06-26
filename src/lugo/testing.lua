@@ -23,7 +23,11 @@ T.__index = T
 local Runner = {}
 Runner.__index = Runner
 
+---@alias lugo.testing.Register fun(test: fun(name: string, fn: fun(t: lugo.testing.T)))
+
 ---@class lugo.testing
+---@field new fun(fn: lugo.testing.Register): lugo.testing.Runner
+---@field run fun(module_names: string[]): boolean
 local testing = {}
 
 local errors = require("lugo.errors")
@@ -234,7 +238,7 @@ local function run_cleanups(t)
     end
 end
 
----@param fn fun(test: fun(name: string, fn: fun(t: lugo.testing.T)))
+---@param fn lugo.testing.Register
 ---@return lugo.testing.Runner
 function testing.new(fn)
     local runner = setmetatable({ tests = {} }, Runner)
@@ -250,6 +254,33 @@ function testing.new(fn)
 
     fn(register)
     return runner
+end
+
+---@param module_names string[]
+---@return boolean ok
+function testing.run(module_names)
+    return testing.new(function(test)
+        for i = 1, #module_names do
+            local module_name = module_names[i]
+            local ok, register = xpcall(function()
+                return require(module_name)
+            end, debug.traceback)
+
+            if not ok then
+                test(module_name .. ": require", function(t)
+                    t:fatal(register)
+                end)
+            elseif type(register) ~= "function" then
+                test(module_name .. ": require", function(t)
+                    t:fatal("test module must return a registration function")
+                end)
+            else
+                register(function(name, fn)
+                    test(module_name .. ": " .. name, fn)
+                end)
+            end
+        end
+    end):run()
 end
 
 ---@return boolean ok
@@ -290,8 +321,12 @@ function Runner:run()
     return ok
 end
 
----@param fn fun(test: fun(name: string, fn: fun(t: lugo.testing.T)))
+---@param fn lugo.testing.Register
 ---@return boolean ok
-return function(fn)
+local function call(_, fn)
     return testing.new(fn):run()
 end
+
+return setmetatable(testing, {
+    __call = call,
+})
