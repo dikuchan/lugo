@@ -22,16 +22,16 @@ local errors = require("lugo.errors")
 ---@return uv|nil uv
 ---@return lugo.Error|nil err
 local function load_uv()
-  local ok, loaded = pcall(require, "luv")
-  if ok then
-    ---@cast loaded uv
-    return loaded, nil
-  end
+    local ok, loaded = pcall(require, "luv")
+    if ok then
+        ---@cast loaded uv
+        return loaded, nil
+    end
 
-  return nil, errors.new("failed to load luv", {
-    kind = "uv_load_failed",
-    fields = { error = tostring(loaded) },
-  })
+    return nil, errors.new("failed to load luv", {
+        kind = "uv_load_failed",
+        fields = { error = tostring(loaded) },
+    })
 end
 
 ---@param driver lugo_uv.Driver
@@ -51,20 +51,20 @@ end
 ---@return lugo_uv.TimerHandle|nil
 ---@return lugo.Error|nil
 function Driver:call_at(deadline, callback)
-  if self.closed then
-    error("lugo_uv driver is closed", 2)
-  end
+    if self.closed then
+        error("lugo_uv driver is closed", 2)
+    end
 
-  local timer, timer_err = self.uv.new_timer()
-  if timer == nil then
-    return nil, errors.new("failed to create uv timer", {
-      kind = "uv_timer_create_failed",
-      fields = { error = timer_err },
-    })
-  end
+    local timer, timer_err = self.uv.new_timer()
+    if timer == nil then
+        return nil, errors.new("failed to create uv timer", {
+            kind = "uv_timer_create_failed",
+            fields = { error = timer_err },
+        })
+    end
 
-  ---@type lugo_uv.TimerHandle
-  local timer_handle = setmetatable({
+    ---@type lugo_uv.TimerHandle
+    local timer_handle = setmetatable({
         driver = self,
         handle = timer,
         active = true,
@@ -78,33 +78,33 @@ function Driver:call_at(deadline, callback)
         delay = 0
     end
 
-  local delay_ms = math.ceil(delay * 1000)
+    local delay_ms = math.ceil(delay * 1000)
 
-  local ok, start_err = timer:start(delay_ms, 0, function()
-    if not timer_handle.active then
-      return
-    end
+    local ok, start_err = timer:start(delay_ms, 0, function()
+        if not timer_handle.active then
+            return
+        end
 
         timer_handle.active = false
         decrement_pending(self)
         timer:stop()
-    timer:close()
-    callback()
-  end)
+        timer:close()
+        callback()
+    end)
 
-  if ok == nil then
-    timer_handle.active = false
-    decrement_pending(self)
-    if not timer:is_closing() then
-      timer:close()
+    if ok == nil then
+        timer_handle.active = false
+        decrement_pending(self)
+        if not timer:is_closing() then
+            timer:close()
+        end
+        return nil, errors.new("failed to start uv timer", {
+            kind = "uv_timer_start_failed",
+            fields = { error = start_err },
+        })
     end
-    return nil, errors.new("failed to start uv timer", {
-      kind = "uv_timer_start_failed",
-      fields = { error = start_err },
-    })
-  end
 
-  return timer_handle, nil
+    return timer_handle, nil
 end
 
 function Driver:run_once()
