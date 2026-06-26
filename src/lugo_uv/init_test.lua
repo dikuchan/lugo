@@ -102,10 +102,12 @@ return function(test)
     local driver = lugo.check(lugo_uv.driver())
     local fired = false
 
-    driver:call_at(driver:now() + 10, function()
+    local handle, err = driver:call_at(driver:now() + 10, function()
       fired = true
     end)
 
+    t:not_nil(handle)
+    t:no_error(err)
     t:is_true(driver:has_pending())
     driver:close()
     t:is_false(driver:has_pending())

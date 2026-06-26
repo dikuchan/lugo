@@ -14,11 +14,13 @@ local Driver = {}
 Driver.__index = Driver
 
 ---@class lugo_uv
----@field driver fun(): lugo_uv.Driver|nil, string|nil
+---@field driver fun(): lugo_uv.Driver|nil, lugo.Error|nil
 local lugo_uv = {}
 
+local errors = require("lugo.errors")
+
 ---@return uv|nil uv
----@return string|nil err
+---@return lugo.Error|nil err
 local function load_uv()
   local ok, loaded = pcall(require, "luv")
   if ok then
@@ -26,7 +28,10 @@ local function load_uv()
     return loaded, nil
   end
 
-  return nil, tostring(loaded)
+  return nil, errors.new("failed to load luv", {
+    kind = "uv_load_failed",
+    fields = { error = tostring(loaded) },
+  })
 end
 
 ---@param driver lugo_uv.Driver
@@ -43,7 +48,8 @@ end
 
 ---@param deadline number
 ---@param callback fun()
----@return lugo_uv.TimerHandle
+---@return lugo_uv.TimerHandle|nil
+---@return lugo.Error|nil
 function Driver:call_at(deadline, callback)
   if self.closed then
     error("lugo_uv driver is closed", 2)
@@ -51,7 +57,10 @@ function Driver:call_at(deadline, callback)
 
   local timer, timer_err = self.uv.new_timer()
   if timer == nil then
-    error(timer_err or "failed to create uv timer", 2)
+    return nil, errors.new("failed to create uv timer", {
+      kind = "uv_timer_create_failed",
+      fields = { error = timer_err },
+    })
   end
 
   ---@type lugo_uv.TimerHandle
@@ -89,10 +98,13 @@ function Driver:call_at(deadline, callback)
     if not timer:is_closing() then
       timer:close()
     end
-    error(start_err or "failed to start uv timer", 2)
+    return nil, errors.new("failed to start uv timer", {
+      kind = "uv_timer_start_failed",
+      fields = { error = start_err },
+    })
   end
 
-  return timer_handle
+  return timer_handle, nil
 end
 
 function Driver:run_once()
@@ -137,7 +149,7 @@ function TimerHandle:cancel()
 end
 
 ---@return lugo_uv.Driver|nil driver
----@return string|nil err
+---@return lugo.Error|nil err
 function lugo_uv.driver()
     local uv, err = load_uv()
     if uv == nil then

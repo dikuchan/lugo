@@ -29,6 +29,7 @@ end
 ---@param deadline number
 ---@param callback fun()
 ---@return lugo.TimerHandle
+---@return nil
 function TestDriver:call_at(deadline, callback)
   local handle = setmetatable({
     driver = self,
@@ -38,7 +39,7 @@ function TestDriver:call_at(deadline, callback)
   }, TestTimerHandle)
 
   self.timers[#self.timers + 1] = handle
-  return handle
+  return handle, nil
 end
 
 function TestTimerHandle:cancel()
@@ -229,6 +230,31 @@ return function(test)
 
     t:is_nil(result)
     t:error_is(err, lugo.scheduler.ErrUnsupportedDriverCapability)
+  end)
+
+  test("scheduler: driver timer error fails sleeping task", function(t)
+    local timer_err = lugo.new_error("timer failed", { kind = "timer_failed" })
+    local driver = {
+      now = function()
+        return 0
+      end,
+      call_at = function()
+        return nil, timer_err
+      end,
+      run_once = function()
+      end,
+      has_pending = function()
+        return false
+      end,
+    }
+
+    local result, err = lugo.run(function()
+      lugo.check(lugo.sleep(1))
+      return "unreachable"
+    end, { driver = driver })
+
+    t:is_nil(result)
+    t:error_is(err, timer_err)
   end)
 
   test("scheduler: child panic propagates through join", function(t)

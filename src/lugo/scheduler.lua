@@ -5,7 +5,7 @@
 
 ---@class lugo.SchedulerDriver
 ---@field now fun(self: lugo.SchedulerDriver): number
----@field call_at fun(self: lugo.SchedulerDriver, deadline: number, callback: fun()): lugo.TimerHandle
+---@field call_at fun(self: lugo.SchedulerDriver, deadline: number, callback: fun()): lugo.TimerHandle|nil, lugo.Error|nil
 ---@field run_once fun(self: lugo.SchedulerDriver)
 ---@field has_pending fun(self: lugo.SchedulerDriver): boolean
 local SchedulerDriver = {}
@@ -134,10 +134,19 @@ function Scheduler:handle_yield(task, op, a)
         end
 
         task.status_value = "waiting"
-        task.timer_handle = self.driver:call_at(op.deadline, function()
+        local timer_handle, timer_err = self.driver:call_at(op.deadline, function()
             task.timer_handle = nil
             self:enqueue(task)
         end)
+
+        if timer_err ~= nil then
+            task.status_value = "dead"
+            task.err_value = timer_err
+            self:finish_task(task)
+            return
+        end
+
+        task.timer_handle = timer_handle
         return
     end
 
