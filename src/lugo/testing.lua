@@ -35,7 +35,13 @@ local testing = {}
 local errors = require("lugo.errors")
 local unpack = _G["unpack"] or rawget(table, "unpack")
 
-local FATAL = {}
+local FATAL = errors.new("fatal test failure", { kind = "testing_fatal" })
+
+---@param value any
+---@return boolean
+local function is_fatal(value)
+    return type(value) == "table" and value._lugo_panic == true and errors.is(value.error, FATAL)
+end
 
 ---@param value any
 ---@return string
@@ -84,7 +90,7 @@ end
 ---@param message? string
 function T:fatal(message)
     self:fail(message)
-    error(FATAL, 0)
+    errors.panic(FATAL)
 end
 
 ---@param message? string
@@ -300,7 +306,7 @@ function Runner:run()
             test_case.fn(t)
         end, debug.traceback)
 
-        if not ran and err ~= FATAL then
+        if not ran and not is_fatal(err) then
             t:fail(err)
         end
 

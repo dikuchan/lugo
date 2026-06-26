@@ -52,7 +52,9 @@ end
 ---@return lugo.Error|nil
 function Driver:call_at(deadline, callback)
     if self.closed then
-        error("lugo_uv driver is closed", 2)
+        errors.panic(errors.new("lugo_uv driver is closed", {
+            kind = "uv_driver_closed",
+        }))
     end
 
     local timer, timer_err = self.uv.new_timer()

@@ -261,14 +261,14 @@ local function register(test)
     test("scheduler: child panic propagates through join", function(t)
         local result, err = lugo.run(function()
             local child = lugo.check(lugo.go(function()
-                error("boom")
+                lugo.panic("boom")
             end))
 
             return child:join()
         end)
 
         t:is_nil(result)
-        t:error_as(err, "panic")
+        t:error_is(err, "boom")
     end)
 
     test("scheduler: finished task can be joined again", function(t)

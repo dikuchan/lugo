@@ -36,7 +36,10 @@ end
 function channel.new(capacity)
     capacity = capacity or 0
     if capacity < 0 then
-        error("channel capacity must be non-negative", 2)
+        errors.panic(errors.new("channel capacity must be non-negative", {
+            kind = "invalid_channel_capacity",
+            fields = { capacity = capacity },
+        }))
     end
 
     return setmetatable({
