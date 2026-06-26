@@ -45,6 +45,7 @@ local context = require("lugo.context")
 local errors = require("lugo.errors")
 
 local current_scheduler = nil
+local unpack_args = _G["unpack"] or rawget(table, "unpack")
 
 scheduler.ErrNoScheduler = errors.new("no scheduler is running", {
     kind = "scheduler_not_running",
@@ -172,7 +173,7 @@ function Scheduler:resume_task(task)
     local args = task.resume_args or { n = 0 }
     task.resume_args = nil
 
-    local ok, op, a = coroutine.resume(task.co, unpack(args, 1, args.n))
+    local ok, op, a = coroutine.resume(task.co, unpack_args(args, 1, args.n))
     self.current_task = nil
 
     if not ok then
@@ -212,7 +213,7 @@ function Scheduler:go(fn, ...)
     local task = setmetatable({
         scheduler = self,
         co = coroutine.create(function()
-            return fn(unpack(args, 1, args.n))
+            return fn(unpack_args(args, 1, args.n))
         end),
         status_value = "ready",
         done_signal = context.new_done(),

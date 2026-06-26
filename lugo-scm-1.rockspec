@@ -1,0 +1,29 @@
+package = "lugo"
+version = "scm-1"
+
+source = {
+  url = "git+https://github.com/dikuchan/lugo.git",
+}
+
+description = {
+  summary = "Go-like programming model for Lua.",
+  detailed = "Lugo provides Go-like structured errors, contexts, cooperative scheduling, and optional libuv-backed timers for Lua.",
+  homepage = "https://github.com/dikuchan/lugo",
+  license = "MIT",
+}
+
+dependencies = {
+  "lua >= 5.1, < 5.2",
+  "luv >= 1.52.1, < 2.0",
+}
+
+build = {
+  type = "builtin",
+  modules = {
+    ["lugo"] = "lua/lugo/init.lua",
+    ["lugo.context"] = "lua/lugo/context.lua",
+    ["lugo.errors"] = "lua/lugo/errors.lua",
+    ["lugo.scheduler"] = "lua/lugo/scheduler.lua",
+    ["lugo_uv"] = "lua/lugo_uv/init.lua",
+  },
+}
