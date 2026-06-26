@@ -162,6 +162,34 @@ function Scheduler:handle_yield(task, op, a)
         return
     end
 
+    if op.kind == "channel_send" then
+        local ok, err = op.channel:send_op(task, op.value)
+        if err ~= nil then
+            task.status_value = "dead"
+            task.err_value = err
+            self:finish_task(task)
+        elseif ok then
+            self:enqueue(task, true, nil)
+        else
+            task.status_value = "waiting"
+        end
+        return
+    end
+
+    if op.kind == "channel_recv" then
+        local ready, value, ok, err = op.channel:recv_op(task)
+        if err ~= nil then
+            task.status_value = "dead"
+            task.err_value = err
+            self:finish_task(task)
+        elseif ready then
+            self:enqueue(task, value, ok, nil)
+        else
+            task.status_value = "waiting"
+        end
+        return
+    end
+
     task.status_value = "dead"
     task.err_value = errors.new("unknown scheduler operation", {
         kind = "unknown_scheduler_operation",
@@ -346,6 +374,11 @@ end
 ---@return lugo.Task|nil
 function scheduler.current()
     return current_scheduler and current_scheduler.current_task or nil
+end
+
+---@return lugo.Scheduler|nil
+function scheduler.current_scheduler()
+    return current_scheduler
 end
 
 ---@return nil

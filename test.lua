@@ -3,6 +3,7 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 local testing = require("lugo.testing")
 
 local ok = testing.run({
+    "lugo.channel_test",
     "lugo.context_test",
     "lugo.errors_test",
     "lugo.scheduler_test",

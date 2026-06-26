@@ -21,6 +21,7 @@ build = {
   type = "builtin",
   modules = {
     ["lugo"] = "src/lugo/init.lua",
+    ["lugo.channel"] = "src/lugo/channel.lua",
     ["lugo.context"] = "src/lugo/context.lua",
     ["lugo.errors"] = "src/lugo/errors.lua",
     ["lugo.scheduler"] = "src/lugo/scheduler.lua",

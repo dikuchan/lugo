@@ -2,6 +2,7 @@
 ---@field errors lugo.errors
 ---@field context lugo.context
 ---@field scheduler lugo.scheduler
+---@field channel lugo.channel
 ---@field testing lugo.testing
 ---@field new_error fun(message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field wrap_error fun(err: lugo.Error|string, message: string, opts?: lugo.ErrorOptions): lugo.Error
@@ -13,6 +14,7 @@ local lugo = {}
 lugo.errors = require("lugo.errors")
 lugo.context = require("lugo.context")
 lugo.scheduler = require("lugo.scheduler")
+lugo.channel = require("lugo.channel")
 lugo.testing = require("lugo.testing")
 
 lugo.new_error = lugo.errors.new
@@ -53,6 +55,12 @@ end
 ---@return lugo.Task|nil
 function lugo.current()
     return lugo.scheduler.current()
+end
+
+---@param capacity? integer
+---@return lugo.Channel
+function lugo.chan(capacity)
+    return lugo.channel.new(capacity)
 end
 
 return lugo
