@@ -1,42 +1,57 @@
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
+local testing = require("lugo.testing")
 
 local context = lugo.context
 
-local function assert_equal(actual, expected)
-  if actual ~= expected then
-    error(("expected %s, got %s"):format(tostring(expected), tostring(actual)), 2)
-  end
+local ok = testing(function(test)
+  test("context: background is active", function(t)
+    local root = context.background()
+
+    t:is_nil(root:err())
+    t:is_false(root:done():is_closed())
+  end)
+
+  test("context: cancel closes done and sets error", function(t)
+    local root = context.background()
+    local child, cancel = context.with_cancel(root)
+
+    t:is_nil(child:err())
+    cancel()
+
+    t:is_true(context.is_canceled(child:err()))
+    t:is_true(child:done():is_closed())
+  end)
+
+  test("context: parent cancellation propagates to child", function(t)
+    local parent, cancel = context.with_cancel(context.background())
+    local child = context.with_value(parent, "request_id", "abc")
+
+    t:equal(child:value("request_id"), "abc")
+    t:is_nil(child:err())
+
+    cancel()
+    t:is_true(context.is_canceled(child:err()))
+  end)
+
+  test("context: expired deadline wins over later cancel", function(t)
+    local expired, cancel = context.with_deadline(context.background(), os.time() - 1)
+
+    t:is_true(context.is_deadline_exceeded(expired:err()))
+    cancel()
+    t:is_true(context.is_deadline_exceeded(expired:err()))
+  end)
+
+  test("context: timeout can be canceled", function(t)
+    local timed, cancel = context.with_timeout(context.background(), 60)
+
+    t:is_nil(timed:err())
+    cancel()
+    t:is_true(context.is_canceled(timed:err()))
+  end)
+end)
+
+if not ok then
+  error("context_test.lua failed")
 end
-
-local root = context.background()
-assert_equal(root:err(), nil)
-assert_equal(root:done():is_closed(), false)
-
-local child, cancel = context.with_cancel(root)
-assert_equal(child:err(), nil)
-cancel()
-
-assert(context.is_canceled(child:err()))
-assert_equal(child:done():is_closed(), true)
-
-local parent, parent_cancel = context.with_cancel(context.background())
-local grandchild = context.with_value(parent, "request_id", "abc")
-assert_equal(grandchild:value("request_id"), "abc")
-assert_equal(grandchild:err(), nil)
-
-parent_cancel()
-assert(context.is_canceled(grandchild:err()))
-
-local expired, expired_cancel = context.with_deadline(context.background(), os.time() - 1)
-assert(context.is_deadline_exceeded(expired:err()))
-expired_cancel()
-assert(context.is_deadline_exceeded(expired:err()))
-
-local timed, timed_cancel = context.with_timeout(context.background(), 60)
-assert_equal(timed:err(), nil)
-timed_cancel()
-assert(context.is_canceled(timed:err()))
-
-print("context_test.lua: ok")

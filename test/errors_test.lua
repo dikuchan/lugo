@@ -1,58 +1,78 @@
 package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
+local testing = require("lugo.testing")
 
-local function assert_equal(actual, expected)
-  if actual ~= expected then
-    error(("expected %s, got %s"):format(tostring(expected), tostring(actual)), 2)
-  end
-end
+local ok = testing(function(test)
+  test("errors: create and wrap structured errors", function(t)
+    local not_found = lugo.new_error("not found", { kind = "not_found" })
+    local wrapped = lugo.wrap_error(not_found, "load user failed")
 
-local not_found = lugo.new_error("not found", { kind = "not_found" })
-local wrapped = lugo.wrap_error(not_found, "load user failed")
+    t:equal(tostring(not_found), "not found")
+    t:is_true(lugo.errors.is_error(not_found))
+    t:is_true(lugo.errors.is(wrapped, not_found))
+    t:equal(lugo.errors.as(wrapped, "not_found"), not_found)
+  end)
 
-assert_equal(tostring(not_found), "not found")
-assert(lugo.errors.is_error(not_found))
-assert(lugo.errors.is(wrapped, not_found))
-assert(lugo.errors.as(wrapped, "not_found") == not_found)
+  test("errors: catch converts check panic to error return", function(t)
+    local not_found = lugo.new_error("not found", { kind = "not_found" })
+    local wrapped = lugo.wrap_error(not_found, "load user failed")
 
-local value, err = lugo.catch(function()
-  local user = lugo.check(nil, wrapped)
-  return user
+    local value, err = lugo.catch(function()
+      local user = lugo.check(nil, wrapped)
+      return user
+    end)
+
+    t:is_nil(value)
+    t:not_nil(err)
+    t:error_is(err, not_found)
+  end)
+
+  test("errors: catch returns successful value", function(t)
+    local result, err = lugo.catch(function()
+      return "ok"
+    end)
+
+    t:equal(result, "ok")
+    t:no_error(err)
+  end)
+
+  test("errors: catch preserves nil success", function(t)
+    local function returns_nil_pair()
+      return nil, nil
+    end
+
+    local result, err = lugo.catch(returns_nil_pair)
+
+    t:is_nil(result)
+    t:no_error(err)
+  end)
+
+  test("errors: catch keeps first success value", function(t)
+    local function returns_pair()
+      return "first", "second"
+    end
+
+    local result, err = lugo.catch(returns_pair)
+
+    t:equal(result, "first")
+    t:no_error(err)
+  end)
+
+  test("errors: join combines multiple errors", function(t)
+    local not_found = lugo.new_error("not found", { kind = "not_found" })
+    local joined = lugo.errors.join(nil, "first", not_found)
+
+    if joined == nil then
+      t:fatal("expected joined error")
+      return
+    end
+
+    t:equal(joined.kind, "multiple")
+    t:equal(#joined.fields.errors, 2)
+  end)
 end)
 
-assert_equal(value, nil)
-assert(err ~= nil)
-assert(lugo.errors.is(err, not_found))
-
-local result, result_err = lugo.catch(function()
-  return "ok"
-end)
-
-assert_equal(result, "ok")
-assert_equal(result_err, nil)
-
-local function returns_nil_pair()
-  return nil, nil
+if not ok then
+  error("errors_test.lua failed")
 end
-
-local nil_result, nil_err = lugo.catch(returns_nil_pair)
-
-assert_equal(nil_result, nil)
-assert_equal(nil_err, nil)
-
-local function returns_pair()
-  return "first", "second"
-end
-
-local first_result, first_err = lugo.catch(returns_pair)
-
-assert_equal(first_result, "first")
-assert_equal(first_err, nil)
-
-local joined = lugo.errors.join(nil, "first", not_found)
-assert(joined ~= nil)
-assert_equal(joined.kind, "multiple")
-assert_equal(#joined.fields.errors, 2)
-
-print("errors_test.lua: ok")

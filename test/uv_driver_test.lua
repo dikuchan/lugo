@@ -2,89 +2,115 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
 local lugo_uv = require("lugo_uv")
+local testing = require("lugo.testing")
 
-local function assert_equal(actual, expected)
-  if actual ~= expected then
-    error(("expected %s, got %s"):format(tostring(expected), tostring(actual)), 2)
-  end
-end
-
-local driver, driver_err = lugo_uv.driver()
-if driver == nil then
-  print("uv_driver_test.lua: skipped (" .. tostring(driver_err) .. ")")
+local probe_driver, probe_err = lugo_uv.driver()
+if probe_driver == nil then
+  print("uv_driver_test.lua: skipped (" .. tostring(probe_err) .. ")")
   return
 end
+probe_driver:close()
 
-local before = driver:now()
-local after = driver:now()
-assert(after >= before)
+local ok = testing(function(test)
+  test("lugo_uv: now is monotonic", function(t)
+    local driver = lugo.check(lugo_uv.driver())
+    t:cleanup(function()
+      driver:close()
+    end)
 
-local slept = false
-local sleep_result, sleep_err = lugo.run(function()
-  lugo.check(lugo.sleep(0.01))
-  slept = true
-  return "slept"
-end, { driver = driver })
+    local before = driver:now()
+    local after = driver:now()
 
-assert_equal(sleep_result, "slept")
-assert_equal(sleep_err, nil)
-assert_equal(slept, true)
-assert_equal(driver:has_pending(), false)
+    t:is_true(after >= before)
+  end)
 
-local order = {}
-local ordered_driver = lugo.check(lugo_uv.driver())
-local ordered_result, ordered_err = lugo.run(function()
-  local slow = lugo.check(lugo.go(function()
-    lugo.check(lugo.sleep(0.02))
-    order[#order + 1] = "slow"
-    return "slow"
-  end))
+  test("lugo_uv: sleep resumes through real timer", function(t)
+    local driver = lugo.check(lugo_uv.driver())
+    local slept = false
+    t:cleanup(function()
+      driver:close()
+    end)
 
-  local fast = lugo.check(lugo.go(function()
-    lugo.check(lugo.sleep(0.005))
-    order[#order + 1] = "fast"
-    return "fast"
-  end))
+    local result, err = lugo.run(function()
+      lugo.check(lugo.sleep(0.01))
+      slept = true
+      return "slept"
+    end, { driver = driver })
 
-  assert_equal(fast:join(), "fast")
-  assert_equal(slow:join(), "slow")
-  return "ordered"
-end, { driver = ordered_driver })
+    t:equal(result, "slept")
+    t:no_error(err)
+    t:is_true(slept)
+    t:is_false(driver:has_pending())
+  end)
 
-assert_equal(ordered_result, "ordered")
-assert_equal(ordered_err, nil)
-assert_equal(table.concat(order, ","), "fast,slow")
-assert_equal(ordered_driver:has_pending(), false)
+  test("lugo_uv: timers fire in deadline order", function(t)
+    local driver = lugo.check(lugo_uv.driver())
+    local order = {}
+    t:cleanup(function()
+      driver:close()
+    end)
 
-local canceled_driver = lugo.check(lugo_uv.driver())
-local cancel_result, cancel_err = lugo.run(function()
-  local child = lugo.check(lugo.go(function()
-    lugo.check(lugo.sleep(10))
-    return "late"
-  end))
+    local result, err = lugo.run(function()
+      local slow = lugo.check(lugo.go(function()
+        lugo.check(lugo.sleep(0.02))
+        order[#order + 1] = "slow"
+        return "slow"
+      end))
 
-  lugo.check(lugo.yield())
-  child:cancel()
-  assert_equal(canceled_driver:has_pending(), false)
-  return child:status()
-end, { driver = canceled_driver })
+      local fast = lugo.check(lugo.go(function()
+        lugo.check(lugo.sleep(0.005))
+        order[#order + 1] = "fast"
+        return "fast"
+      end))
 
-assert_equal(cancel_result, "canceled")
-assert_equal(cancel_err, nil)
+      t:equal(fast:join(), "fast")
+      t:equal(slow:join(), "slow")
+      return "ordered"
+    end, { driver = driver })
 
-local close_driver = lugo.check(lugo_uv.driver())
-local close_fired = false
-close_driver:call_at(close_driver:now() + 10, function()
-  close_fired = true
+    t:equal(result, "ordered")
+    t:no_error(err)
+    t:equal(table.concat(order, ","), "fast,slow")
+    t:is_false(driver:has_pending())
+  end)
+
+  test("lugo_uv: cancellation clears timer", function(t)
+    local driver = lugo.check(lugo_uv.driver())
+    t:cleanup(function()
+      driver:close()
+    end)
+
+    local result, err = lugo.run(function()
+      local child = lugo.check(lugo.go(function()
+        lugo.check(lugo.sleep(10))
+        return "late"
+      end))
+
+      lugo.check(lugo.yield())
+      child:cancel()
+      t:is_false(driver:has_pending())
+      return child:status()
+    end, { driver = driver })
+
+    t:equal(result, "canceled")
+    t:no_error(err)
+  end)
+
+  test("lugo_uv: close cancels pending timers", function(t)
+    local driver = lugo.check(lugo_uv.driver())
+    local fired = false
+
+    driver:call_at(driver:now() + 10, function()
+      fired = true
+    end)
+
+    t:is_true(driver:has_pending())
+    driver:close()
+    t:is_false(driver:has_pending())
+    t:is_false(fired)
+  end)
 end)
 
-assert_equal(close_driver:has_pending(), true)
-close_driver:close()
-assert_equal(close_driver:has_pending(), false)
-assert_equal(close_fired, false)
-
-driver:close()
-ordered_driver:close()
-canceled_driver:close()
-
-print("uv_driver_test.lua: ok")
+if not ok then
+  error("uv_driver_test.lua failed")
+end
