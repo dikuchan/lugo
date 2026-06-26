@@ -89,7 +89,8 @@ function TestDriver:has_pending()
     return self:next_timer() ~= nil
 end
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("scheduler: run returns root value", function(t)
         local result, err = lugo.run(function()
             return "root"
@@ -350,3 +351,5 @@ return function(test)
         t:error_as(err, "scheduler_deadlock")
     end)
 end
+
+return register

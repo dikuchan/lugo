@@ -2,7 +2,8 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("channel: buffered send and receive", function(t)
         local ch = lugo.chan(1)
 
@@ -160,3 +161,5 @@ return function(test)
         t:error_is(send_err, lugo.channel.ErrClosed)
     end)
 end
+
+return register

@@ -1,4 +1,25 @@
 ---@alias lugo.TaskStatus "ready"|"waiting"|"dead"|"canceled"
+---@alias lugo.scheduler.Op lugo.scheduler.YieldOp|lugo.scheduler.SleepOp|lugo.scheduler.JoinOp<any>|lugo.scheduler.ChannelSendOp<any>|lugo.scheduler.ChannelRecvOp<any>
+
+---@class lugo.scheduler.YieldOp
+---@field kind "yield"
+
+---@class lugo.scheduler.SleepOp
+---@field kind "sleep"
+---@field deadline number
+
+---@class lugo.scheduler.JoinOp<T>
+---@field kind "join"
+---@field task lugo.Task<T>
+
+---@class lugo.scheduler.ChannelSendOp<T>
+---@field kind "channel_send"
+---@field channel lugo.Channel<T>
+---@field value T
+
+---@class lugo.scheduler.ChannelRecvOp<T>
+---@field kind "channel_recv"
+---@field channel lugo.Channel<T>
 
 ---@class lugo.TimerHandle
 ---@field cancel fun(self: lugo.TimerHandle)
@@ -16,14 +37,14 @@ local SchedulerDriver = {}
 ---@class lugo.ResumeArgs
 ---@field n integer
 
----@class lugo.Task
+---@class lugo.Task<T>
 ---@field scheduler lugo.Scheduler
 ---@field co thread
 ---@field status_value lugo.TaskStatus
----@field result_value any
+---@field result_value T
 ---@field err_value? lugo.Error
 ---@field done_signal lugo.Done
----@field waiters lugo.Task[]
+---@field waiters lugo.Task<any>[]
 ---@field resume_args? lugo.ResumeArgs
 ---@field timer_handle? lugo.TimerHandle
 local Task = {}
@@ -31,10 +52,10 @@ Task.__index = Task
 
 ---@class lugo.Scheduler
 ---@field driver? lugo.SchedulerDriver
----@field ready lugo.Task[]
----@field current_task? lugo.Task
----@field tasks lugo.Task[]
----@field root? lugo.Task
+---@field ready lugo.Task<any>[]
+---@field current_task? lugo.Task<any>
+---@field tasks lugo.Task<any>[]
+---@field root? lugo.Task<any>
 local Scheduler = {}
 Scheduler.__index = Scheduler
 
@@ -81,7 +102,7 @@ local function error_from_panic(err, co)
     })
 end
 
----@param task lugo.Task
+---@param task lugo.Task<any>
 ---@param ... any
 function Scheduler:enqueue(task, ...)
     if task.status_value == "dead" or task.status_value == "canceled" then
@@ -93,7 +114,7 @@ function Scheduler:enqueue(task, ...)
     self.ready[#self.ready + 1] = task
 end
 
----@return lugo.Task|nil
+---@return lugo.Task<any>|nil
 function Scheduler:dequeue()
     if #self.ready == 0 then
         return nil
@@ -104,7 +125,7 @@ function Scheduler:dequeue()
     return task
 end
 
----@param task lugo.Task
+---@param task lugo.Task<any>
 function Scheduler:finish_task(task)
     task.done_signal:close()
 
@@ -115,10 +136,10 @@ function Scheduler:finish_task(task)
     end
 end
 
----@param task lugo.Task
----@param op table|nil
----@param a any
-function Scheduler:handle_yield(task, op, a)
+---@param task lugo.Task<any>
+---@param op lugo.scheduler.Op|nil
+---@param extra any
+function Scheduler:handle_yield(task, op, extra)
     if op == nil or op.kind == "yield" then
         self:enqueue(task)
         return
@@ -193,12 +214,12 @@ function Scheduler:handle_yield(task, op, a)
     task.status_value = "dead"
     task.err_value = errors.new("unknown scheduler operation", {
         kind = "unknown_scheduler_operation",
-        fields = { operation = op.kind, argument = a },
+        fields = { operation = op.kind, argument = extra },
     })
     self:finish_task(task)
 end
 
----@param task lugo.Task
+---@param task lugo.Task<any>
 function Scheduler:resume_task(task)
     if task.status_value == "dead" or task.status_value == "canceled" then
         return
@@ -242,9 +263,11 @@ function Scheduler:has_live_tasks()
     return false
 end
 
----@param fn fun(...): any
+---@generic T
+---@overload fun(self: lugo.Scheduler, fn: fun(...), ...: any): lugo.Task<nil>
+---@param fn fun(...): T|nil
 ---@param ... any
----@return lugo.Task
+---@return lugo.Task<T>
 function Scheduler:go(fn, ...)
     local args = pack(...)
     local task = setmetatable({
@@ -262,8 +285,9 @@ function Scheduler:go(fn, ...)
     return task
 end
 
----@param fn fun(...): any
----@return any value
+---@generic T
+---@param fn fun(): T
+---@return T|nil value
 ---@return lugo.Error|nil err
 function Scheduler:run(fn)
     local previous = current_scheduler
@@ -302,7 +326,7 @@ function Task:done()
     return self.done_signal
 end
 
----@return any value
+---@return T|nil value
 ---@return lugo.Error|nil err
 function Task:result()
     return self.result_value, self.err_value
@@ -325,7 +349,7 @@ function Task:cancel(err)
     self.scheduler:finish_task(self)
 end
 
----@return any value
+---@return T|nil value
 ---@return lugo.Error|nil err
 function Task:join()
     if self.status_value == "dead" or self.status_value == "canceled" then
@@ -351,17 +375,20 @@ function scheduler.new(opts)
     }, Scheduler)
 end
 
----@param fn fun(...): any
+---@generic T
+---@param fn fun(): T
 ---@param opts? lugo.SchedulerOptions
----@return any value
+---@return T|nil value
 ---@return lugo.Error|nil err
 function scheduler.run(fn, opts)
     return scheduler.new(opts):run(fn)
 end
 
----@param fn fun(...): any
+---@generic T
+---@overload fun(fn: fun(...), ...: any): lugo.Task<nil>|nil, lugo.Error|nil
+---@param fn fun(...): T|nil
 ---@param ... any
----@return lugo.Task|nil task
+---@return lugo.Task<T>|nil task
 ---@return lugo.Error|nil err
 function scheduler.go(fn, ...)
     if current_scheduler == nil then
@@ -371,7 +398,7 @@ function scheduler.go(fn, ...)
     return current_scheduler:go(fn, ...), nil
 end
 
----@return lugo.Task|nil
+---@return lugo.Task<any>|nil
 function scheduler.current()
     return current_scheduler and current_scheduler.current_task or nil
 end
@@ -388,7 +415,9 @@ function scheduler.yield()
         return nil, scheduler.ErrNoScheduler
     end
 
-    coroutine.yield({ kind = "yield" })
+    ---@type lugo.scheduler.YieldOp
+    local op = { kind = "yield" }
+    coroutine.yield(op)
     return nil, nil
 end
 
@@ -406,7 +435,9 @@ function scheduler.sleep(seconds)
         return nil, scheduler.ErrUnsupportedDriverCapability
     end
 
-    coroutine.yield({ kind = "sleep", deadline = driver:now() + seconds })
+    ---@type lugo.scheduler.SleepOp
+    local op = { kind = "sleep", deadline = driver:now() + seconds }
+    coroutine.yield(op)
     return nil, nil
 end
 

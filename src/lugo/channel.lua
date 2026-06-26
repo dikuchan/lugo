@@ -1,15 +1,15 @@
----@class lugo.ChannelSender
----@field task lugo.Task
----@field value any
+---@class lugo.ChannelSender<T>
+---@field task lugo.Task<any>
+---@field value T
 
 ---@class lugo.ChannelReceiver
----@field task lugo.Task
+---@field task lugo.Task<any>
 
----@class lugo.Channel
+---@class lugo.Channel<T>
 ---@field capacity integer
----@field buffer any[]
+---@field buffer T[]
 ---@field closed boolean
----@field senders lugo.ChannelSender[]
+---@field senders lugo.ChannelSender<T>[]
 ---@field receivers lugo.ChannelReceiver[]
 local Channel = {}
 Channel.__index = Channel
@@ -30,8 +30,9 @@ local function shift(queue)
     return value
 end
 
+---@generic T
 ---@param capacity? integer
----@return lugo.Channel
+---@return lugo.Channel<T>
 function channel.new(capacity)
     capacity = capacity or 0
     if capacity < 0 then
@@ -47,7 +48,7 @@ function channel.new(capacity)
     }, Channel)
 end
 
----@param value any
+---@param value T
 ---@return boolean|nil ok
 ---@return lugo.Error|nil err
 function Channel:send(value)
@@ -71,11 +72,13 @@ function Channel:send(value)
         return nil, scheduler.ErrNoScheduler
     end
 
-    return coroutine.yield({ kind = "channel_send", channel = self, value = value })
+    ---@type lugo.scheduler.ChannelSendOp<T>
+    local op = { kind = "channel_send", channel = self, value = value }
+    return coroutine.yield(op)
 end
 
----@param task lugo.Task
----@param value any
+---@param task lugo.Task<any>
+---@param value T
 ---@return boolean ready
 ---@return lugo.Error|nil err
 function Channel:send_op(task, value)
@@ -101,7 +104,7 @@ function Channel:send_op(task, value)
     return false, nil
 end
 
----@return any value
+---@return T|nil value
 ---@return boolean ok
 ---@return lugo.Error|nil err
 function Channel:recv()
@@ -130,12 +133,14 @@ function Channel:recv()
         return nil, false, scheduler.ErrNoScheduler
     end
 
-    return coroutine.yield({ kind = "channel_recv", channel = self })
+    ---@type lugo.scheduler.ChannelRecvOp<T>
+    local op = { kind = "channel_recv", channel = self }
+    return coroutine.yield(op)
 end
 
----@param task lugo.Task
+---@param task lugo.Task<any>
 ---@return boolean ready
----@return any value
+---@return T|nil value
 ---@return boolean ok
 ---@return lugo.Error|nil err
 function Channel:recv_op(task)

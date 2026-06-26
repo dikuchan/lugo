@@ -6,8 +6,6 @@
 ---@field testing lugo.testing
 ---@field new_error fun(message: string, opts?: lugo.ErrorOptions): lugo.Error
 ---@field wrap_error fun(err: lugo.Error|string, message: string, opts?: lugo.ErrorOptions): lugo.Error
----@field check fun(value: any, err?: lugo.Error|string): any
----@field catch fun(fn: fun(): any): any, lugo.Error|nil
 ---@field panic fun(err: lugo.Error|string)
 local lugo = {}
 
@@ -19,21 +17,38 @@ lugo.testing = require("lugo.testing")
 
 lugo.new_error = lugo.errors.new
 lugo.wrap_error = lugo.errors.wrap
-lugo.check = lugo.errors.check
-lugo.catch = lugo.errors.catch
 lugo.panic = lugo.errors.panic
 
----@param fn fun(...): any
+---@generic T
+---@param value T|nil
+---@param err? lugo.Error|string
+---@return T
+function lugo.check(value, err)
+    return lugo.errors.check(value, err)
+end
+
+---@generic T
+---@param fn fun(): T
+---@return T|nil value
+---@return lugo.Error|nil err
+function lugo.catch(fn)
+    return lugo.errors.catch(fn)
+end
+
+---@generic T
+---@param fn fun(): T
 ---@param opts? lugo.SchedulerOptions
----@return any value
+---@return T|nil value
 ---@return lugo.Error|nil err
 function lugo.run(fn, opts)
     return lugo.scheduler.run(fn, opts)
 end
 
----@param fn fun(...): any
+---@generic T
+---@overload fun(fn: fun(...), ...: any): lugo.Task<nil>|nil, lugo.Error|nil
+---@param fn fun(...): T|nil
 ---@param ... any
----@return lugo.Task|nil task
+---@return lugo.Task<T>|nil task
 ---@return lugo.Error|nil err
 function lugo.go(fn, ...)
     return lugo.scheduler.go(fn, ...)
@@ -52,13 +67,14 @@ function lugo.yield()
     return lugo.scheduler.yield()
 end
 
----@return lugo.Task|nil
+---@return lugo.Task<any>|nil
 function lugo.current()
     return lugo.scheduler.current()
 end
 
+---@generic T
 ---@param capacity? integer
----@return lugo.Channel
+---@return lugo.Channel<T>
 function lugo.chan(capacity)
     return lugo.channel.new(capacity)
 end

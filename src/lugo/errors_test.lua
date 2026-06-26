@@ -2,7 +2,8 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local lugo = require("lugo")
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("errors: create and wrap structured errors", function(t)
         local not_found = lugo.new_error("not found", { kind = "not_found" })
         local wrapped = lugo.wrap_error(not_found, "load user failed")
@@ -71,3 +72,5 @@ return function(test)
         t:equal(#joined.fields.errors, 2)
     end)
 end
+
+return register

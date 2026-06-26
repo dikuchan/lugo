@@ -16,14 +16,16 @@ T.__index = T
 
 ---@class lugo.testing.Case
 ---@field name string
----@field fn fun(t: lugo.testing.T)
+---@field fn lugo.testing.TestFunc
 
 ---@class lugo.testing.Runner
 ---@field tests lugo.testing.Case[]
 local Runner = {}
 Runner.__index = Runner
 
----@alias lugo.testing.Register fun(test: fun(name: string, fn: fun(t: lugo.testing.T)))
+---@alias lugo.testing.TestFunc fun(t: lugo.testing.T)
+---@alias lugo.testing.RegisterFunc fun(name: string, fn: lugo.testing.TestFunc)
+---@alias lugo.testing.Register fun(test: lugo.testing.RegisterFunc)
 
 ---@class lugo.testing
 ---@field new fun(fn: lugo.testing.Register): lugo.testing.Runner
@@ -186,9 +188,10 @@ function T:cleanup(fn)
     self.cleanups[#self.cleanups + 1] = fn
 end
 
----@param fn fun(...): any
+---@generic T
+---@param fn fun(...): T
 ---@param message? string
----@return fun(...): any
+---@return fun(...): T|nil
 function T:expect(fn, message)
     ---@type lugo.testing.Expectation
     local expectation = {
@@ -243,8 +246,7 @@ end
 function testing.new(fn)
     local runner = setmetatable({ tests = {} }, Runner)
 
-    ---@param name string
-    ---@param test_fn fun(t: lugo.testing.T)
+    ---@type lugo.testing.RegisterFunc
     local function register(name, test_fn)
         runner.tests[#runner.tests + 1] = {
             name = name,
@@ -275,7 +277,9 @@ function testing.run(module_names)
                     t:fatal("test module must return a registration function")
                 end)
             else
-                register(function(name, fn)
+                ---@type lugo.testing.Register
+                local typed_register = register
+                typed_register(function(name, fn)
                     test(module_name .. ": " .. name, fn)
                 end)
             end

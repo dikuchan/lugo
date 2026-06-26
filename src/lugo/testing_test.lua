@@ -2,7 +2,8 @@ package.path = "src/?.lua;src/?/init.lua;" .. package.path
 
 local testing = require("lugo.testing")
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("testing: assertions", function(t)
         t:equal("a", "a")
         t:not_equal("a", "b")
@@ -32,7 +33,7 @@ return function(test)
         _G.print = original_print
 
         if not ran then
-            t:fatal(ok)
+            t:fatal(tostring(ok))
             return
         end
 
@@ -62,7 +63,7 @@ return function(test)
         _G.print = original_print
 
         if not ran then
-            t:fatal(ok)
+            t:fatal(tostring(ok))
             return
         end
 
@@ -81,3 +82,5 @@ return function(test)
         t:is_true(expect_seen)
     end)
 end
+
+return register

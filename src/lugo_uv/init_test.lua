@@ -5,15 +5,18 @@ local lugo_uv = require("lugo_uv")
 
 local probe_driver, probe_err = lugo_uv.driver()
 if probe_driver == nil then
-    return function(test)
+    ---@type lugo.testing.Register
+    local function register_skip(test)
         test("lugo_uv: skipped", function(t)
             t:log("skipped: " .. tostring(probe_err))
         end)
     end
+    return register_skip
 end
 probe_driver:close()
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("lugo_uv: now is monotonic", function(t)
         local driver = lugo.check(lugo_uv.driver())
         t:cleanup(function()
@@ -114,3 +117,5 @@ return function(test)
         t:is_false(fired)
     end)
 end
+
+return register

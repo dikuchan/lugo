@@ -4,7 +4,8 @@ local lugo = require("lugo")
 
 local context = lugo.context
 
-return function(test)
+---@type lugo.testing.Register
+local function register(test)
     test("context: background is active", function(t)
         local root = context.background()
 
@@ -50,3 +51,5 @@ return function(test)
         t:is_true(context.is_canceled(timed:err()))
     end)
 end
+
+return register

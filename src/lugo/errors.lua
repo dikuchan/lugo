@@ -161,7 +161,7 @@ function errors.panic(err)
 end
 
 ---@generic T
----@param value T
+---@param value T|nil
 ---@param err? lugo.Error|string
 ---@return T
 function errors.check(value, err)
