@@ -196,6 +196,7 @@ assert_equal(cancel_result, "joined")
 assert_equal(cancel_err, nil)
 assert_equal(joiner_value, nil)
 assert(lugo.errors.is(joiner_err, custom_cancel))
+assert_equal(cancel_driver:has_pending(), false)
 
 local deadlock_result, deadlock_err = lugo.run(function()
   local current = lugo.current()

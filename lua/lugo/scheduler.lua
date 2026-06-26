@@ -1,9 +1,13 @@
 ---@alias lugo.TaskStatus "ready"|"waiting"|"dead"|"canceled"
 
+---@class lugo.TimerHandle
+---@field cancel fun(self: lugo.TimerHandle)
+
 ---@class lugo.SchedulerDriver
 ---@field now fun(self: lugo.SchedulerDriver): number
----@field wait_until fun(self: lugo.SchedulerDriver, deadline?: number)
----@field wake? fun(self: lugo.SchedulerDriver)
+---@field call_at fun(self: lugo.SchedulerDriver, deadline: number, callback: fun()): lugo.TimerHandle
+---@field run_once fun(self: lugo.SchedulerDriver)
+---@field has_pending fun(self: lugo.SchedulerDriver): boolean
 local SchedulerDriver = {}
 
 ---@class lugo.SchedulerOptions
@@ -21,14 +25,13 @@ local SchedulerDriver = {}
 ---@field done_signal lugo.Done
 ---@field waiters lugo.Task[]
 ---@field resume_args? lugo.ResumeArgs
----@field deadline? number
+---@field timer_handle? lugo.TimerHandle
 local Task = {}
 Task.__index = Task
 
 ---@class lugo.Scheduler
 ---@field driver? lugo.SchedulerDriver
 ---@field ready lugo.Task[]
----@field sleeping lugo.Task[]
 ---@field current_task? lugo.Task
 ---@field tasks lugo.Task[]
 ---@field root? lugo.Task
@@ -87,10 +90,6 @@ function Scheduler:enqueue(task, ...)
     task.status_value = "ready"
     task.resume_args = pack(...)
     self.ready[#self.ready + 1] = task
-    local driver = self.driver
-    if driver ~= nil and driver.wake ~= nil then
-        driver:wake()
-    end
 end
 
 ---@return lugo.Task|nil
@@ -125,17 +124,19 @@ function Scheduler:handle_yield(task, op, a)
     end
 
     if op.kind == "sleep" then
-        if self.driver == nil or self.driver.now == nil or self.driver.wait_until == nil then
+        if self.driver == nil or self.driver.now == nil or self.driver.call_at == nil then
             task.status_value = "dead"
             task.err_value = errors.wrap(scheduler.ErrUnsupportedDriverCapability,
-                "sleep requires a monotonic scheduler driver")
+                "sleep requires a timer-capable scheduler driver")
             self:finish_task(task)
             return
         end
 
         task.status_value = "waiting"
-        task.deadline = op.deadline
-        self.sleeping[#self.sleeping + 1] = task
+        task.timer_handle = self.driver:call_at(op.deadline, function()
+            task.timer_handle = nil
+            self:enqueue(task)
+        end)
         return
     end
 
@@ -192,37 +193,6 @@ function Scheduler:resume_task(task)
     self:handle_yield(task, op, a)
 end
 
-function Scheduler:wake_sleepers()
-    if self.driver == nil or self.driver.now == nil then
-        return
-    end
-
-    local now = self.driver:now()
-    local remaining = {}
-    for i = 1, #self.sleeping do
-        local task = self.sleeping[i]
-        if task.deadline <= now then
-            task.deadline = nil
-            self:enqueue(task)
-        else
-            remaining[#remaining + 1] = task
-        end
-    end
-    self.sleeping = remaining
-end
-
----@return number|nil
-function Scheduler:next_deadline()
-    local deadline = nil
-    for i = 1, #self.sleeping do
-        local task_deadline = self.sleeping[i].deadline
-        if task_deadline ~= nil and (deadline == nil or task_deadline < deadline) then
-            deadline = task_deadline
-        end
-    end
-    return deadline
-end
-
 ---@return boolean
 function Scheduler:has_live_tasks()
     for i = 1, #self.tasks do
@@ -264,15 +234,12 @@ function Scheduler:run(fn)
     self.root = self:go(fn)
 
     while self.root.status_value ~= "dead" and self.root.status_value ~= "canceled" do
-        self:wake_sleepers()
-
         local task = self:dequeue()
         if task ~= nil then
             self:resume_task(task)
         else
-            local deadline = self:next_deadline()
-            if deadline ~= nil and self.driver ~= nil and self.driver.wait_until ~= nil then
-                self.driver:wait_until(deadline)
+            if self.driver ~= nil and self.driver.has_pending ~= nil and self.driver:has_pending() then
+                self.driver:run_once()
             elseif not self:has_live_tasks() then
                 break
             else
@@ -309,6 +276,11 @@ function Task:cancel(err)
         return
     end
 
+    if self.timer_handle ~= nil then
+        self.timer_handle:cancel()
+        self.timer_handle = nil
+    end
+
     self.status_value = "canceled"
     self.err_value = err or scheduler.ErrTaskCanceled
     self.done_signal:close()
@@ -337,7 +309,6 @@ function scheduler.new(opts)
     return setmetatable({
         driver = opts.driver,
         ready = {},
-        sleeping = {},
         tasks = {},
     }, Scheduler)
 end
@@ -388,7 +359,7 @@ function scheduler.sleep(seconds)
     end
 
     local driver = current_scheduler and current_scheduler.driver or nil
-    if driver == nil or driver.now == nil or driver.wait_until == nil then
+    if driver == nil or driver.now == nil or driver.call_at == nil then
         return nil, scheduler.ErrUnsupportedDriverCapability
     end
 
