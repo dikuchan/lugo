@@ -1,5 +1,5 @@
 ---@alias lugo.TaskStatus "ready"|"waiting"|"dead"|"canceled"
----@alias lugo.scheduler.Op lugo.scheduler.YieldOp|lugo.scheduler.SleepOp|lugo.scheduler.JoinOp<any>|lugo.scheduler.ChannelSendOp<any>|lugo.scheduler.ChannelRecvOp<any>
+---@alias lugo.scheduler.Op lugo.scheduler.YieldOp|lugo.scheduler.SleepOp|lugo.scheduler.JoinOp<any>|lugo.scheduler.ChannelSendOp<any>|lugo.scheduler.ChannelRecvOp<any>|lugo.scheduler.SelectOp<any>
 
 ---@class lugo.scheduler.YieldOp
 ---@field kind "yield"
@@ -20,6 +20,23 @@
 ---@class lugo.scheduler.ChannelRecvOp<T>
 ---@field kind "channel_recv"
 ---@field channel lugo.Channel<T>
+
+---@class lugo.scheduler.SelectOp<R>
+---@field kind "select"
+---@field cases lugo.select.Case<R>[]
+
+---@alias lugo.scheduler.SelectRegistrationKind "send"|"recv"
+
+---@class lugo.scheduler.SelectRegistration
+---@field channel lugo.Channel<any>
+---@field kind lugo.scheduler.SelectRegistrationKind
+---@field entry table
+
+---@class lugo.scheduler.SelectWaiter
+---@field scheduler lugo.Scheduler
+---@field task lugo.Task<any>
+---@field selected boolean
+---@field registrations lugo.scheduler.SelectRegistration[]
 
 ---@class lugo.TimerHandle
 ---@field cancel fun(self: lugo.TimerHandle)
@@ -56,6 +73,7 @@ Task.__index = Task
 ---@field current_task? lugo.Task<any>
 ---@field tasks lugo.Task<any>[]
 ---@field root? lugo.Task<any>
+---@field select_cursor integer
 local Scheduler = {}
 Scheduler.__index = Scheduler
 
@@ -136,6 +154,119 @@ function Scheduler:finish_task(task)
     end
 end
 
+---@param waiter lugo.scheduler.SelectWaiter
+---@param selected_case integer
+---@param value any
+---@param ok boolean|nil
+---@param err? lugo.Error
+function Scheduler:commit_select(waiter, selected_case, value, ok, err)
+    if waiter.selected then
+        return
+    end
+
+    waiter.selected = true
+    for i = 1, #waiter.registrations do
+        local registration = waiter.registrations[i]
+        registration.channel:remove_select_registration(registration)
+    end
+    waiter.registrations = {}
+
+    self:enqueue(waiter.task, selected_case, value, ok, err)
+end
+
+---@param cases lugo.select.Case<any>[]
+---@return integer[]
+---@return integer|nil
+local function ready_select_cases(cases)
+    local ready = {}
+    local default_case = nil
+
+    for i = 1, #cases do
+        local case = cases[i]
+        if case.kind == "default" then
+            default_case = i
+        elseif case.kind == "send" then
+            if case.channel:can_send() then
+                ready[#ready + 1] = i
+            end
+        elseif case.kind == "recv" then
+            if case.channel:can_recv() then
+                ready[#ready + 1] = i
+            end
+        end
+    end
+
+    return ready, default_case
+end
+
+---@param cases lugo.select.Case<any>[]
+---@param index integer
+---@return any value
+---@return boolean|nil ok
+---@return lugo.Error|nil err
+local function execute_ready_select_case(cases, index)
+    local case = cases[index]
+    if case.kind == "default" then
+        return nil, nil, nil
+    end
+
+    if case.kind == "send" then
+        local _, err = case.channel:try_send(case.value)
+        return nil, nil, err
+    end
+
+    local _, value, ok, err = case.channel:try_recv()
+    return value, ok, err
+end
+
+---@param task lugo.Task<any>
+---@param op lugo.scheduler.SelectOp<any>
+function Scheduler:handle_select(task, op)
+    local ready, default_case = ready_select_cases(op.cases)
+    if #ready > 0 then
+        local offset = (self.select_cursor % #ready) + 1
+        self.select_cursor = self.select_cursor + 1
+        local selected_case = ready[offset]
+        local value, ok, err = execute_ready_select_case(op.cases, selected_case)
+        self:enqueue(task, selected_case, value, ok, err)
+        return
+    end
+
+    if default_case ~= nil then
+        self:enqueue(task, default_case, nil, nil, nil)
+        return
+    end
+
+    ---@type lugo.scheduler.SelectWaiter
+    local waiter = {
+        scheduler = self,
+        task = task,
+        selected = false,
+        registrations = {},
+    }
+
+    for i = 1, #op.cases do
+        local case = op.cases[i]
+        if case.kind == "send" then
+            local entry = case.channel:park_select_send(waiter, i, case.value)
+            waiter.registrations[#waiter.registrations + 1] = {
+                channel = case.channel,
+                kind = "send",
+                entry = entry,
+            }
+        elseif case.kind == "recv" then
+            local entry = case.channel:park_select_recv(waiter, i)
+            waiter.registrations[#waiter.registrations + 1] = {
+                channel = case.channel,
+                kind = "recv",
+                entry = entry,
+            }
+        end
+    end
+
+    task.status_value = "waiting"
+end
+
 ---@param task lugo.Task<any>
 ---@param op lugo.scheduler.Op|nil
 ---@param extra any
@@ -208,6 +339,11 @@ function Scheduler:handle_yield(task, op, extra)
         else
             task.status_value = "waiting"
         end
+        return
+    end
+
+    if op.kind == "select" then
+        self:handle_select(task, op)
         return
     end
 
@@ -372,6 +508,7 @@ function scheduler.new(opts)
         driver = opts.driver,
         ready = {},
         tasks = {},
+        select_cursor = 0,
     }, Scheduler)
 end
 

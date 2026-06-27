@@ -1,9 +1,13 @@
 ---@class lugo.ChannelSender<T>
 ---@field task lugo.Task<any>
 ---@field value T
+---@field select_waiter? lugo.scheduler.SelectWaiter
+---@field case_index? integer
 
 ---@class lugo.ChannelReceiver
 ---@field task lugo.Task<any>
+---@field select_waiter? lugo.scheduler.SelectWaiter
+---@field case_index? integer
 
 ---@class lugo.Channel<T>
 ---@field capacity integer
@@ -25,9 +29,57 @@ channel.ErrClosed = errors.new("channel is closed", { kind = "channel_closed" })
 ---@param queue table
 ---@return any
 local function shift(queue)
-    local value = queue[1]
-    table.remove(queue, 1)
-    return value
+    while #queue > 0 do
+        local value = queue[1]
+        table.remove(queue, 1)
+
+        local waiter = value.select_waiter
+        if waiter == nil or not waiter.selected then
+            return value
+        end
+    end
+
+    return nil
+end
+
+---@param queue table
+---@return boolean
+local function has_active(queue)
+    for i = 1, #queue do
+        local waiter = queue[i].select_waiter
+        if waiter == nil or not waiter.selected then
+            return true
+        end
+    end
+
+    return false
+end
+
+---@param sender lugo.ChannelSender<any>
+---@param ok boolean|nil
+---@param err? lugo.Error
+local function wake_sender(sender, ok, err)
+    local waiter = sender.select_waiter
+    if waiter ~= nil then
+        waiter.scheduler:commit_select(waiter, sender.case_index, nil, nil, err)
+        return
+    end
+
+    sender.task.scheduler:enqueue(sender.task, ok, err)
+end
+
+---@param receiver lugo.ChannelReceiver
+---@param value any
+---@param ok boolean
+---@param err? lugo.Error
+local function wake_receiver(receiver, value, ok, err)
+    local waiter = receiver.select_waiter
+    if waiter ~= nil then
+        waiter.scheduler:commit_select(waiter, receiver.case_index, value, ok, err)
+        return
+    end
+
+    receiver.task.scheduler:enqueue(receiver.task, value, ok, err)
 end
 
 ---@generic T
@@ -61,7 +113,7 @@ function Channel:send(value)
 
     local receiver = shift(self.receivers)
     if receiver ~= nil then
-        receiver.task.scheduler:enqueue(receiver.task, value, true, nil)
+        wake_receiver(receiver, value, true, nil)
         return true, nil
     end
 
@@ -91,7 +143,7 @@ function Channel:send_op(task, value)
 
     local receiver = shift(self.receivers)
     if receiver ~= nil then
-        receiver.task.scheduler:enqueue(receiver.task, value, true, nil)
+        wake_receiver(receiver, value, true, nil)
         return true, nil
     end
 
@@ -116,14 +168,14 @@ function Channel:recv()
         local sender = shift(self.senders)
         if sender ~= nil then
             self.buffer[#self.buffer + 1] = sender.value
-            sender.task.scheduler:enqueue(sender.task, true, nil)
+            wake_sender(sender, true, nil)
         end
         return value, true, nil
     end
 
     local sender = shift(self.senders)
     if sender ~= nil then
-        sender.task.scheduler:enqueue(sender.task, true, nil)
+        wake_sender(sender, true, nil)
         return sender.value, true, nil
     end
 
@@ -152,14 +204,14 @@ function Channel:recv_op(task)
         local sender = shift(self.senders)
         if sender ~= nil then
             self.buffer[#self.buffer + 1] = sender.value
-            sender.task.scheduler:enqueue(sender.task, true, nil)
+            wake_sender(sender, true, nil)
         end
         return true, value, true, nil
     end
 
     local sender = shift(self.senders)
     if sender ~= nil then
-        sender.task.scheduler:enqueue(sender.task, true, nil)
+        wake_sender(sender, true, nil)
         return true, sender.value, true, nil
     end
 
@@ -173,6 +225,107 @@ function Channel:recv_op(task)
     return false, nil, false, nil
 end
 
+---@return boolean
+function Channel:can_send()
+    return self.closed or has_active(self.receivers) or #self.buffer < self.capacity
+end
+
+---@return boolean
+function Channel:can_recv()
+    return #self.buffer > 0 or has_active(self.senders) or self.closed
+end
+
+---@param value T
+---@return boolean ready
+---@return lugo.Error|nil err
+function Channel:try_send(value)
+    if self.closed then
+        return true, channel.ErrClosed
+    end
+
+    local receiver = shift(self.receivers)
+    if receiver ~= nil then
+        wake_receiver(receiver, value, true, nil)
+        return true, nil
+    end
+
+    if #self.buffer < self.capacity then
+        self.buffer[#self.buffer + 1] = value
+        return true, nil
+    end
+
+    return false, nil
+end
+
+---@return boolean ready
+---@return T|nil value
+---@return boolean ok
+---@return lugo.Error|nil err
+function Channel:try_recv()
+    if #self.buffer > 0 then
+        local value = shift(self.buffer)
+        local sender = shift(self.senders)
+        if sender ~= nil then
+            self.buffer[#self.buffer + 1] = sender.value
+            wake_sender(sender, true, nil)
+        end
+        return true, value, true, nil
+    end
+
+    local sender = shift(self.senders)
+    if sender ~= nil then
+        wake_sender(sender, true, nil)
+        return true, sender.value, true, nil
+    end
+
+    if self.closed then
+        return true, nil, false, nil
+    end
+
+    return false, nil, false, nil
+end
+
+---@param waiter lugo.scheduler.SelectWaiter
+---@param case_index integer
+---@param value T
+---@return lugo.ChannelSender<T>
+function Channel:park_select_send(waiter, case_index, value)
+    ---@type lugo.ChannelSender<T>
+    local sender = {
+        task = waiter.task,
+        value = value,
+        select_waiter = waiter,
+        case_index = case_index,
+    }
+    self.senders[#self.senders + 1] = sender
+    return sender
+end
+
+---@param waiter lugo.scheduler.SelectWaiter
+---@param case_index integer
+---@return lugo.ChannelReceiver
+function Channel:park_select_recv(waiter, case_index)
+    ---@type lugo.ChannelReceiver
+    local receiver = {
+        task = waiter.task,
+        select_waiter = waiter,
+        case_index = case_index,
+    }
+    self.receivers[#self.receivers + 1] = receiver
+    return receiver
+end
+
+---@param registration lugo.scheduler.SelectRegistration
+function Channel:remove_select_registration(registration)
+    local queue = registration.kind == "send" and self.senders or self.receivers
+    for i = 1, #queue do
+        if queue[i] == registration.entry then
+            table.remove(queue, i)
+            return
+        end
+    end
+end
+
 ---@return lugo.Error|nil err
 function Channel:close()
     if self.closed then
@@ -183,12 +336,16 @@ function Channel:close()
 
     while #self.receivers > 0 do
         local receiver = shift(self.receivers)
-        receiver.task.scheduler:enqueue(receiver.task, nil, false, nil)
+        if receiver ~= nil then
+            wake_receiver(receiver, nil, false, nil)
+        end
     end
 
     while #self.senders > 0 do
         local sender = shift(self.senders)
-        sender.task.scheduler:enqueue(sender.task, nil, channel.ErrClosed)
+        if sender ~= nil then
+            wake_sender(sender, nil, channel.ErrClosed)
+        end
     end
 
     return nil

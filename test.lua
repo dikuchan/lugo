@@ -7,6 +7,7 @@ local ok = testing.run({
     "lugo.context_test",
     "lugo.errors_test",
     "lugo.scheduler_test",
+    "lugo.select_test",
     "lugo.testing_test",
     "lugo_uv.init_test",
 })

@@ -15,6 +15,8 @@ lugo.scheduler = require("lugo.scheduler")
 lugo.channel = require("lugo.channel")
 lugo.testing = require("lugo.testing")
 
+local select_module = require("lugo.select")
+
 lugo.new_error = lugo.errors.new
 lugo.wrap_error = lugo.errors.wrap
 lugo.panic = lugo.errors.panic
@@ -77,6 +79,38 @@ end
 ---@return lugo.Channel<T>
 function lugo.chan(capacity)
     return lugo.channel.new(capacity)
+end
+
+---@generic T, R
+---@param ch lugo.Channel<T>
+---@param callback fun(value: T|nil, ok: boolean): R
+---@return lugo.select.Case<R>
+function lugo.recv(ch, callback)
+    return select_module.recv(ch, callback)
+end
+
+---@generic T, R
+---@param ch lugo.Channel<T>
+---@param value T
+---@param callback fun(): R
+---@return lugo.select.Case<R>
+function lugo.send(ch, value, callback)
+    return select_module.send(ch, value, callback)
+end
+
+---@generic R
+---@param callback fun(): R
+---@return lugo.select.Case<R>
+function lugo.default(callback)
+    return select_module.default(callback)
+end
+
+---@generic R
+---@param cases lugo.select.Case<R>[]
+---@return R|nil result
+---@return lugo.Error|nil err
+function lugo.select(cases)
+    return select_module.select(cases)
 end
 
 return lugo
