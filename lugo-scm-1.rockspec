@@ -26,6 +26,7 @@ build = {
     ["lugo.errors"] = "src/lugo/errors.lua",
     ["lugo.scheduler"] = "src/lugo/scheduler.lua",
     ["lugo.select"] = "src/lugo/select.lua",
+    ["lugo.struct"] = "src/lugo/struct.lua",
     ["lugo.testing"] = "src/lugo/testing.lua",
     ["lugo_uv"] = "src/lugo_uv/init.lua",
   },

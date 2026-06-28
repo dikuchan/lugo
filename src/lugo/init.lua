@@ -16,6 +16,7 @@ lugo.channel = require("lugo.channel")
 lugo.testing = require("lugo.testing")
 
 local select_module = require("lugo.select")
+local struct_module = require("lugo.struct")
 
 lugo.new_error = lugo.errors.new
 lugo.wrap_error = lugo.errors.wrap
@@ -111,6 +112,36 @@ end
 ---@return lugo.Error|nil err
 function lugo.select(cases)
     return select_module.select(cases)
+end
+
+lugo.any = struct_module.any
+lugo.string = struct_module.string
+lugo.number = struct_module.number
+lugo.boolean = struct_module.boolean
+lugo.table = struct_module.table
+lugo.function_ = struct_module.function_
+
+---@generic T
+---@param validator lugo.Validator<T>
+---@return lugo.Validator<T|nil>
+function lugo.optional(validator)
+    return struct_module.optional(validator)
+end
+
+---@generic T
+---@param name string
+---@param fields lugo.StructFields
+---@return lugo.Struct<T>
+function lugo.struct(name, fields)
+    return struct_module.struct(name, fields)
+end
+
+---@generic T
+---@param name string
+---@param members lugo.StructFields
+---@return lugo.Interface<T>
+function lugo.interface(name, members)
+    return struct_module.interface(name, members)
 end
 
 return lugo
