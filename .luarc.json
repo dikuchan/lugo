@@ -1,10 +1,10 @@
 {
   "$schema": "https://raw.githubusercontent.com/LuaLS/vscode-lua/master/setting/schema.json",
   "runtime.version": "Lua 5.1",
-  "workspace.library": [
-    "src",
-    ".stubs/luv/library"
-  ],
+  "workspace.library": ["src", ".stubs/luv/library"],
   "workspace.checkThirdParty": false,
-  "diagnostics.globals": []
+  "diagnostics.globals": [],
+  "diagnostics.neededFileStatus": {
+    "codestyle-check": "Any"
+  }
 }
